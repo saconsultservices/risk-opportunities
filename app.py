@@ -1,13 +1,15 @@
-# app.py
 from flask import Flask, jsonify
 from flask_cors import CORS
 import csv
 import os
 
 app = Flask(__name__)
-CORS(app)                     # ← allows *any* origin (good for dev)
+CORS(app)  # ← This enables CORS
 
-def load_opportunities():
+print("CORS ENABLED – allowing all origins")  # ← Will appear in Render logs
+
+@app.route('/data')
+def get_data():
     data = []
     csv_path = "opportunities.csv"
     if os.path.exists(csv_path):
@@ -26,18 +28,13 @@ def load_opportunities():
         except Exception as e:
             print(f"CSV error: {e}")
     else:
-        print("CSV not found – returning empty list")
-    return data
-
-@app.route('/data')
-def get_data():
-    return jsonify(load_opportunities())
+        print("No CSV found – returning empty")
+    return jsonify(data)
 
 @app.route('/')
 def home():
-    return "Risk Opportunities API – use /data for JSON"
+    return "API live – use /data"
 
-# Render requires binding to $PORT
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
