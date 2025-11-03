@@ -1,28 +1,32 @@
+# app.py
 from flask import Flask, jsonify
+from flask_cors import CORS
 import csv
-from datetime import datetime
 import os
 
 app = Flask(__name__)
+CORS(app)                     # ← allows *any* origin (good for dev)
 
-# Load data from CSV (auto-reload when file changes)
 def load_opportunities():
     data = []
     csv_path = "opportunities.csv"
     if os.path.exists(csv_path):
-        with open(csv_path, newline='', encoding='utf-8') as f:
-            reader = csv.reader(f)
-            next(reader, None)  # skip header
-            for row in reader:
-                if len(row) >= 5:
+        try:
+            with open(csv_path, newline='', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
                     data.append({
-                        "company": row[0],
-                        "province": row[1],
-                        "sector": row[2],
-                        "url": row[3],
-                        "deadline": row[4],
-                        "budget": row[5] if len(row) > 5 else ""
+                        "company": row.get("company_name", ""),
+                        "province": row.get("province", ""),
+                        "sector": row.get("sector", ""),
+                        "url": row.get("domain", ""),
+                        "deadline": row.get("deadline", ""),
+                        "budget": row.get("budget", "")
                     })
+        except Exception as e:
+            print(f"CSV error: {e}")
+    else:
+        print("CSV not found – returning empty list")
     return data
 
 @app.route('/data')
@@ -31,7 +35,9 @@ def get_data():
 
 @app.route('/')
 def home():
-    return "Risk Opportunities API is running! Use /data"
+    return "Risk Opportunities API – use /data for JSON"
 
+# Render requires binding to $PORT
 if __name__ == '__main__':
-    app.run(debug=True)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)
