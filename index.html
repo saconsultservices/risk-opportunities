@@ -52,7 +52,7 @@
     </div>
 
     <button id="searchBtn" class="w-full bg-indigo-600 text-white py-2 rounded-md hover:bg-indigo-700 transition">
-      Search Opportunities
+      Search ties
     </button>
 
     <div id="loading" class="loading text-center text-gray-600">
@@ -67,89 +67,91 @@
     <div id="results" class="mt-6 overflow-x-auto"></div>
   </div>
 
-  <!-- ==== DATA (seed CSV embedded as JS) ==== -->
   <script>
-    // Paste your CSV (from previous answer) here, but as JS array
-    const opportunities = [
-      // Format: [company, province, sector, url, deadline (ISO), budget (optional)]
-      ["Teck Resources", "BC", "Mining", "https://www.teck.com/careers/", "2025-12-15", "$150k"],
-      ["Suncor Energy", "AB", "Energy", "https://www.suncor.com/careers", "2025-11-30", ""],
-      ["Fraser Health Authority", "BC", "Healthcare", "https://careers.fraserhealth.ca/", "2025-11-20", ""],
-      ["Enbridge", "AB", "Energy", "https://www.enbridge.com/careers", "2025-12-10", "$200k"],
-      // ... add 10–20 more rows from your CSV to test
-      // You can paste up to ~500 rows here – still under 100 KB
-    ];
+  const API_URL = 'https://risk-opportunities-api.onrender.com/data';  // ← YOUR API
 
-    // Add 20 more demo rows so you see results immediately
-    for (let i = 0; i < 20; i++) {
-      const prov = i % 2 === 0 ? "BC" : "AB";
-      const sectors = ["Mining","Energy","Finance","Tech","Healthcare"];
-      opportunities.push([
-        `Demo Corp ${i+1}`, prov, sectors[i%5],
-        `https://example.com/opp-${i+1}`, `2025-${String(12-Math.floor(i/3)).padStart(2,'0')}-01`, ""
-      ]);
+  let opportunities = [];  // Will be filled from API
+
+  // Fetch data once on load
+  async function loadData() {
+    try {
+      const res = await fetch(API_URL);
+      opportunities = await res.json();
+      console.log('Loaded', opportunities.length, 'opportunities');
+    } catch (err) {
+      console.error('API failed, using demo data', err);
+      // Fallback to demo
+      opportunities = [
+        {company: "Demo Corp", province: "BC", sector: "Mining", url: "https://example.com", deadline: "2025-12-01"}
+      ];
     }
-  </script>
+  }
 
-  <!-- ==== SEARCH LOGIC ==== -->
-  <script>
-    const searchBtn = document.getElementById('searchBtn');
-    const resultsDiv = document.getElementById('results');
-    const loading = document.getElementById('loading');
+  // Call on page load
+  window.onload = loadData;
 
-    searchBtn.addEventListener('click', () => {
-      loading.classList.add('active');
-      resultsDiv.innerHTML = '';
-      setTimeout(() => { // simulate async fetch
-        const kw = document.getElementById('keywords').value.toLowerCase().trim();
-        const prov = document.getElementById('province').value;
-        const sector = document.getElementById('sector').value;
-        const deadline = document.getElementById('deadline').value;
+  // === SEARCH LOGIC (updated to use API data) ===
+  const searchBtn = document.getElementById('searchBtn');
+  const resultsDiv = document.getElementById('results');
+  const loading = document.getElementById('loading');
 
-        let filtered = opportunities;
+  searchBtn.addEventListener('click', () => {
+    if (opportunities.length === 0) {
+      resultsDiv.innerHTML = `<p class="text-red-500">Still loading data…</p>`;
+      return;
+    }
 
-        if (kw) {
-          filtered = filtered.filter(row =>
-            row[0].toLowerCase().includes(kw) ||
-            row[2].toLowerCase().includes(kw) ||
-            row[3].toLowerCase().includes(kw)
-          );
-        }
-        if (prov) filtered = filtered.filter(row => row[1] === prov);
-        if (sector) filtered = filtered.filter(row => row[2] === sector);
-        if (deadline) filtered = filtered.filter(row => row[4] >= deadline);
+    loading.classList.add('active');
+    resultsDiv.innerHTML = '';
+    setTimeout(() => {
+      const kw = document.getElementById('keywords').value.toLowerCase().trim();
+      const prov = document.getElementById('province').value;
+      const sector = document.getElementById('sector').value;
+      const deadline = document.getElementById('deadline').value;
 
-        // Build table
-        if (filtered.length === 0) {
-          resultsDiv.innerHTML = `<p class="text-center text-gray-500">No matches found.</p>`;
-        } else {
-          let html = `<table class="min-w-full divide-y divide-gray-200">
-            <thead class="bg-gray-50"><tr>
-              <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Company</th>
-              <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Province</th>
-              <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Sector</th>
-              <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Deadline</th>
-              <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Link</th>
-            </tr></thead><tbody class="bg-white divide-y divide-gray-200">`;
+      let filtered = opportunities;
 
-          filtered.forEach(row => {
-            const [company, province, sect, url, dead, budget] = row;
-            html += `<tr>
-              <td class="px-4 py-2 whitespace-nowrap text-sm">${company}</td>
-              <td class="px-4 py-2 whitespace-nowrap text-sm">${province}</td>
-              <td class="px-4 py-2 whitespace-nowrap text-sm">${sect}</td>
-              <td class="px-4 py-2 whitespace-nowrap text-sm">${dead || '—'}</td>
-              <td class="px-4 py-2 whitespace-nowrap text-sm">
-                <a href="${url}" target="_blank" class="text-indigo-600 hover:underline">View →</a>
-              </td>
-            </tr>`;
-          });
-          html += `</tbody></table>`;
-          resultsDiv.innerHTML = html;
-        }
-        loading.classList.remove('active');
-      }, 600); // fake delay
-    });
-  </script>
+      if (kw) {
+        filtered = filtered.filter(row =>
+          row.company.toLowerCase().includes(kw) ||
+          row.sector.toLowerCase().includes(kw)
+        );
+      }
+      if (prov) filtered = filtered.filter(row => row.province === prov);
+      if (sector) filtered = filtered.filter(row => row.sector === sector);
+      if (deadline) filtered = filtered.filter(row => row.deadline >= deadline);
+
+      if (filtered.length === 0) {
+        resultsDiv.innerHTML = `<p class="text-center text-gray-500">No matches found.</p>`;
+      } else {
+        let html = `<table class="min-w-full divide-y divide-gray-200">
+          <thead class="bg-gray-50"><tr>
+            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Company</th>
+            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Province</th>
+            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Sector</th>
+            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Deadline</th>
+            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Link</th>
+          </tr></thead><tbody class="bg-white divide-y divide-gray-200">`;
+
+        filtered.forEach(row => {
+          html += `<tr>
+            <td class="px-4 py-2 whitespace-nowrap text-sm">${row.company}</td>
+            <td class="px-4 py-2 whitespace-nowrap text-sm">${row.province}</td>
+            <td class="px-4 py-2 whitespace-nowrap text-sm">${row.sector}</td>
+            <td class="px-4 py-2 whitespace-nowrap text-sm">${row.deadline || '—'}</td>
+            <td class="px-4 py-2 whitespace-nowrap text-sm">
+              <a href="${row.url}" target="_blank" class="text-indigo-600 hover:underline">View →</a>
+            </td>
+          </tr>`;
+        });
+        html += `</tbody></table>`;
+        resultsDiv.innerHTML = html;
+      }
+      loading.classList.remove('active');
+    }, 300);
+  });
+</script>
+
+
 </body>
 </html>
