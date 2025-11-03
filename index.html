@@ -94,6 +94,40 @@
   // Run on page load
   window.onload = loadData;
 
+// Add retry button after loading fails
+function addRetryButton() {
+  const resultsDiv = document.getElementById('results');
+  resultsDiv.innerHTML = `
+    <div class="text-center py-4">
+      <p class="text-gray-500 mb-4">Failed to load data (API asleep? Trying again...)</p>
+      <button onclick="loadData()" class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700">
+        Retry Load
+      </button>
+    </div>
+  `;
+}
+
+// Update loadData to call this on error
+async function loadData() {
+  try {
+    const response = await fetch(API_URL);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    opportunities = await response.json();
+    console.log('API loaded', opportunities.length, 'opportunities');
+    if (opportunities.length === 0) {
+      addRetryButton(); // Show retry if empty
+    }
+  } catch (error) {
+    console.error('API failed → showing retry', error);
+    addRetryButton();
+    // Keep fallback for safety
+    opportunities = [
+      { company: "Teck Resources", province: "BC", sector: "Mining", url: "https://www.teck.com/careers/", deadline: "2025-12-15", budget: "$150k" },
+      { company: "Suncor Energy", province: "AB", sector: "Energy", url: "https://www.suncor.com/careers", deadline: "2025-11-30", budget: "" },
+      { company: "Enbridge", province: "AB", sector: "Energy", url: "https://www.enbridge.com/careers", deadline: "2025-12-10", budget: "$200k" }
+    ];
+  }
+}
   // Search button logic
   document.getElementById('searchBtn').addEventListener('click', () => {
     if (opportunities.length === 0) {
