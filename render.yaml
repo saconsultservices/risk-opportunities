@@ -22,20 +22,7 @@ services:
           name: rfp-cache
           property: connectionString
 
-  - type: cron
-    name: daily-rfp-scraper
-    env: python
-    plan: free
-    schedule: "0 0 * * *"  # Midnight UTC; adjust to PST equiv (e.g., "8 0 * * *" for 12AM PST)
-    buildCommand: pip install -r requirements.txt
-    startCommand: python rfp_spider.py  # Assumes updated to use DB
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: rfp-db
-          property: connectionString
-
-  - type: web
+    - type: web
     name: risk-opportunities-frontend
     env: static
     plan: free
