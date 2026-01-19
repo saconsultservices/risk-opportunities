@@ -2,7 +2,7 @@ flask==3.0.3
 flask-cors==4.0.0
 flask-caching==2.3.0
 gunicorn==22.0.0
-psycopg2-binary==2.9.9  # For PostgreSQL
-sqlalchemy==2.0.25
+psycopg2-binary==2.9.9
+sqlalchemy==2.0.45  # Updated here
 scrapy==2.11.1
-redis==5.0.1  # For caching
+redis==5.0.1
