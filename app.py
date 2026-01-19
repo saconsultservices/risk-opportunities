@@ -1,7 +1,9 @@
 from flask import Flask, jsonify, Response
 from flask_cors import CORS
 from flask_caching import Cache
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text, inspect
+from sqlalchemy.orm import declarative_base
+from sqlalchemy import Column, Integer, String, Date, DateTime
 import os
 import datetime
 
@@ -20,6 +22,26 @@ cache = Cache(app, config=config)
 # DB connection
 DATABASE_URL = os.environ.get('DATABASE_URL').replace("postgres://", "postgresql://")  # Render fix
 engine = create_engine(DATABASE_URL)
+
+# Define the table schema (same as in spider)
+Base = declarative_base()
+
+class Opportunity(Base):
+    __tablename__ = 'opportunities'
+    id = Column(Integer, primary_key=True)
+    company_name = Column(String(255))
+    province = Column(String(2))
+    sector = Column(String(100))
+    domain = Column(String)
+    deadline = Column(Date)
+    budget = Column(String(50))
+    last_updated = Column(DateTime, default=datetime.datetime.utcnow)
+
+# Create table if not exists (runs on app startup)
+inspector = inspect(engine)
+if not inspector.has_table('opportunities'):
+    Base.metadata.create_all(engine)
+    print("Created opportunities table")
 
 @app.route('/data')
 @cache.cached(timeout=300, query_string=True)  # Cache 5 min
