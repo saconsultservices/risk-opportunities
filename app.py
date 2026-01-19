@@ -1,39 +1,55 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, Response
 from flask_cors import CORS
-import csv
+from flask_caching import Cache
+from sqlalchemy import create_engine, text
 import os
+import datetime
 
 app = Flask(__name__)
-CORS(app)  # ← This enables CORS
 
-print("CORS ENABLED – allowing all origins")  # ← Will appear in Render logs
+# CORS restricted
+CORS(app, resources={r"/data": {"origins": ["https://your-frontend.onrender.com", "http://localhost"]}})
+
+# Caching with Redis
+config = {
+    'CACHE_TYPE': 'RedisCache',
+    'CACHE_REDIS_URL': os.environ.get('REDIS_URL')
+}
+cache = Cache(app, config=config)
+
+# DB connection
+DATABASE_URL = os.environ.get('DATABASE_URL').replace("postgres://", "postgresql://")  # Render fix
+engine = create_engine(DATABASE_URL)
 
 @app.route('/data')
+@cache.cached(timeout=300, query_string=True)  # Cache 5 min
 def get_data():
-    data = []
-    csv_path = "opportunities.csv"
-    if os.path.exists(csv_path):
-        try:
-            with open(csv_path, newline='', encoding='utf-8') as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    data.append({
-                        "company": row.get("company_name", ""),
-                        "province": row.get("province", ""),
-                        "sector": row.get("sector", ""),
-                        "url": row.get("domain", ""),
-                        "deadline": row.get("deadline", ""),
-                        "budget": row.get("budget", "")
-                    })
-        except Exception as e:
-            print(f"CSV error: {e}")
-    else:
-        print("No CSV found – returning empty")
-    return jsonify(data)
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text("SELECT company_name, province, sector, domain, deadline, budget FROM opportunities ORDER BY deadline ASC"))
+            data = [
+                {
+                    "company": row[0],
+                    "province": row[1],
+                    "sector": row[2],
+                    "url": row[3],
+                    "deadline": row[4].isoformat() if row[4] else "",
+                    "budget": row[5]
+                } for row in result
+            ]
+        if not data:
+            return jsonify({"error": "No data available"}), 404
+        return jsonify(data)
+    except Exception as e:
+        print(f"DB error: {e}")
+        return jsonify({"error": "Server error"}), 500
 
 @app.route('/')
 def home():
-    return "API live – use /data"
+    with engine.connect() as conn:
+        count = conn.execute(text("SELECT COUNT(*) FROM opportunities")).scalar()
+        last = conn.execute(text("SELECT MAX(last_updated) FROM opportunities")).scalar()
+    return f"API live – {count} opportunities, last updated {last or 'N/A'}"
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
