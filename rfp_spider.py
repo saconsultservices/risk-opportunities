@@ -5,7 +5,11 @@ from sqlalchemy import Column, Integer, String, Date, DateTime
 import os
 import datetime
 
-DATABASE_URL = os.environ.get('DATABASE_URL').replace("postgres://", "postgresql://")
+db_url_raw = os.environ.get('DATABASE_URL')
+if db_url_raw is None:
+    raise ValueError("DATABASE_URL environment variable is not set. Check Render dashboard or yaml configuration.")
+DATABASE_URL = db_url_raw.replace("postgres://", "postgresql://")
+
 
 # Define the table schema
 Base = declarative_base()
