@@ -2,7 +2,7 @@ databases:
   - name: rfp-db
     databaseName: rfp
     user: admin
-    plan: free  # Only here, if needed; try omitting to test
+  #  plan: free  # Only here, if needed; try omitting to test
 
 services:
   - type: web
