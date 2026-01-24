@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Risk Opportunities Finder (BC & AB)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .loading { display: none; }
+    .loading.active { display: block; }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen flex items-center justify-center p-4">
+  <div class="max-w-4xl w-full bg-white rounded-xl shadow-lg p-6 space-y-6">
+    <h1 class="text-3xl font-bold text-center text-indigo-700">
+      Risk Consulting Opportunities (BC & AB)
+    </h1>
+    <div class="grid md:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700">Keywords (risk, compliance, audit…)</label>
+        <input id="keywords" type="text" placeholder="e.g. cybersecurity audit"
+               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700">Province</label>
+        <select id="province" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+          <option value="">Both BC & AB</option>
+          <option value="BC">British Columbia</option>
+          <option value="AB">Alberta</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700">Sector (optional)</label>
+        <select id="sector" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+          <option value="">Any</option>
+          <option>Mining</option><option>Energy</option><option>Finance</option>
+          <option>Tech</option><option>Healthcare</option><option>Manufacturing</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700">Deadline after (optional)</label>
+        <input id="deadline" type="date" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+      </div>
+    </div>
+    <button id="searchBtn" class="w-full bg-indigo-600 text-white py-2 rounded-md hover:bg-indigo-700 transition">
+      Search Opportunities
+    </button>
+    <div id="loading" class="loading text-center text-gray-600">
+      <svg class="animate-spin inline w-5 h-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+      </svg>
+      Loading fresh data…
+    </div>
+    <div id="results" class="mt-6 overflow-x-auto"></div>
+    <p id="dataStatus" class="text-center text-sm text-gray-500 mt-2"></p>
+  </div>
+  <script>
+    const API_URL = 'https://risk-opportunities-api.onrender.com/data';  // Update with your actual API URL after deploy
+    const CACHE_KEY = 'rfp-opportunities';
+    const CACHE_EXPIRY_HOURS = 24;
+    let opportunities = [];
+    function getCachedData() {
+      const cached = localStorage.getItem(CACHE_KEY);
+      if (cached) {
+        const { data, timestamp } = JSON.parse(cached);
+        if (Date.now() - timestamp < CACHE_EXPIRY_HOURS * 60 * 60 * 1000) {
+          return data;
+        }
+      }
+      return null;
+    }
+    function cacheData(data) {
+      localStorage.setItem(CACHE_KEY, JSON.stringify({ data, timestamp: Date.now() }));
+    }
+    async function loadData(forceRefresh = false) {
+      document.getElementById('loading').classList.add('active');
+      document.getElementById('results').innerHTML = '';
+      document.getElementById('dataStatus').textContent = '';
+      if (!forceRefresh) {
+        const cached = getCachedData();
+        if (cached) {
+          opportunities = cached;
+          updateDataStatus('Cached data (loaded quickly)');
+          document.getElementById('loading').classList.remove('active');
+          return;
+        }
+      }
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        const response = await fetch(API_URL, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        opportunities = await response.json();
+        if (opportunities.length === 0) throw new Error('Empty data');
+        cacheData(opportunities);
+        console.log('API loaded', opportunities.length, 'opportunities');
+        updateDataStatus('Fresh data from API');
+      } catch (error) {
+        console.error('API failed', error);
+        addRetryButton(error.message);
+        opportunities = [
+          { company: "Teck Resources", province: "BC", sector: "Mining", url: "https://www.teck.com/careers/", deadline: "2026-02-15", budget: "$150k" },
+          { company: "Suncor Energy", province: "AB", sector: "Energy", url: "https://www.suncor.com/careers", deadline: "2026-01-30", budget: "" },
+          { company: "Enbridge", province: "AB", sector: "Energy", url: "https://www.enbridge.com/careers", deadline: "2026-02-10", budget: "$200k" }
+        ];
+        updateDataStatus('Using demo data (API error)');
+      } finally {
+        document.getElementById('loading').classList.remove('active');
+      }
+    }
+    function addRetryButton(errorMsg) {
+      const resultsDiv = document.getElementById('results');
+      resultsDiv.innerHTML = `
+        <div class="text-center py-4">
+          <p class="text-red-500 mb-4">Failed to load data: ${errorMsg || 'API may be asleep or unreachable'}. Try again?</p>
+          <button onclick="loadData(true)" class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700">
+            Retry Load
+          </button>
+        </div>
+      `;
+    }
+    function updateDataStatus(message) {
+      document.getElementById('dataStatus').textContent = message;
+    }
+    window.onload = () => loadData();
+    document.getElementById('searchBtn').addEventListener('click', () => {
+      if (opportunities.length === 0) {
+        document.getElementById('results').innerHTML = '<p class="text-red-500 text-center">No data loaded yet.</p>';
+        return;
+      }
+      document.getElementById('loading').classList.add('active');
+      setTimeout(() => {
+        const kw = document.getElementById('keywords').value.toLowerCase().trim();
+        const prov = document.getElementById('province').value;
+        const sector = document.getElementById('sector').value;
+        const deadlineInput = document.getElementById('deadline').value;
+        let filtered = opportunities;
+        if (kw) {
+          filtered = filtered.filter(r =>
+            Object.values(r).some(val => val && val.toString().toLowerCase().includes(kw))
+          );
+        }
+        if (prov) filtered = filtered.filter(r => r.province === prov);
+        if (sector) filtered = filtered.filter(r => r.sector === sector);
+        if (deadlineInput) {
+          const minDate = new Date(deadlineInput);
+          filtered = filtered.filter(r => r.deadline && new Date(r.deadline) >= minDate);
+        }
+        filtered.sort((a, b) => new Date(a.deadline || '9999-12-31') - new Date(b.deadline || '9999-12-31'));
+        const resultsDiv = document.getElementById('results');
+        if (filtered.length === 0) {
+          resultsDiv.innerHTML = '<p class="text-center text-gray-500">No matches found.</p>';
+        } else {
+          let html = `
+            <table class="min-w-full divide-y divide-gray-200">
+              <thead class="bg-gray-50">
+                <tr>
+                  <th scope="col" class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Company</th>
+                  <th scope="col" class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Province</th>
+                  <th scope="col" class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Sector</th>
+                  <th scope="col" class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Deadline</th>
+                  <th scope="col" class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Budget</th>
+                  <th scope="col" class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Link</th>
+                </tr>
+              </thead>
+              <tbody class="bg-white divide-y divide-gray-200">
+          `;
+          filtered.forEach(r => {
+            html += `
+              <tr>
+                <td class="px-4 py-2 text-sm">${r.company}</td>
+                <td class="px-4 py-2 text-sm">${r.province}</td>
+                <td class="px-4 py-2 text-sm">${r.sector}</td>
+                <td class="px-4 py-2 text-sm">${r.deadline || '—'}</td>
+                <td class="px-4 py-2 text-sm">${r.budget || '—'}</td>
+                <td class="px-4 py-2 text-sm">
+                  <a href="${r.url}" target="_blank" rel="noopener noreferrer" class="text-indigo-600 hover:underline">View →</a>
+                </td>
+              </tr>
+            `;
+          });
+          html += `</tbody></table>`;
+          resultsDiv.innerHTML = html;
+        }
+        document.getElementById('loading').classList.remove('active');
+      }, 300);
+    });
+  </script>
+</body>
+</html>
