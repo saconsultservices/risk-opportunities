@@ -2,13 +2,12 @@ databases:
   - name: rfp-db
     databaseName: rfp
     user: admin
-    plan: free  # Keep for DB, as it's valid
+    plan: free  # Only here, if needed; try omitting to test
 
 services:
   - type: web
     name: risk-opportunities-api
     env: python
-    # No plan: free here - omit to default
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn --workers 2 --timeout 30 app:app
     envVars:
@@ -25,7 +24,6 @@ services:
   - type: web
     name: risk-opportunities-frontend
     env: static
-    # No plan: free here - omit to default
     buildCommand: ""
     staticPublishPath: .
     routes:
@@ -35,5 +33,4 @@ services:
 
   - type: redis
     name: rfp-cache
-    # No plan: free here - omit to default
     ipAllowList: []
