@@ -2,7 +2,7 @@ databases:
   - name: rfp-db
     databaseName: rfp
     user: admin
-  #  plan: free  # Only here, if needed; try omitting to test
+    plan: free
 
 services:
   - type: web
@@ -25,7 +25,7 @@ services:
     name: risk-opportunities-frontend
     env: static
     buildCommand: ""
-    staticPublishPath: .
+    staticPublishPath: public  # Updated to explicit dir
     routes:
       - type: rewrite
         source: /*
