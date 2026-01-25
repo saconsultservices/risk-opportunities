@@ -2,7 +2,7 @@ flask==3.0.3
 flask-cors==4.0.0
 flask-caching==2.3.0
 gunicorn==22.0.0
-psycopg2-binary==2.9.9
-sqlalchemy==2.0.45  # Updated here
+sqlalchemy==2.0.45
 scrapy==2.11.1
 redis==5.0.1
+psycopg==3.3  # Replaces psycopg2-binary for Postgres driver
