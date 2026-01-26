@@ -20,8 +20,11 @@ cache = Cache(app, config=config)
 db_url_raw = os.environ.get('DATABASE_URL')
 if db_url_raw is None:
     raise ValueError("DATABASE_URL environment variable is not set. Check Render dashboard or yaml configuration.")
-DATABASE_URL = db_url_raw.replace("postgres://", "postgresql://")
+print(f"Raw DB URL (redacted): {db_url_raw[:20]}...")  # Debug log (keep if you added it)
+DATABASE_URL = db_url_raw.replace("postgresql://", "postgresql+psycopg://")  # Updated replace to handle Render's format
+print(f"Processed DB URL (redacted): {DATABASE_URL[:30]}...")  # Debug log
 engine = create_engine(DATABASE_URL)
+
 
 Base = declarative_base()
 
@@ -74,3 +77,7 @@ def home():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
+
+
+
+
