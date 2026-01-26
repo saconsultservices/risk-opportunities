@@ -1,10 +1,11 @@
-import scrapy
+import feedparser
 from sqlalchemy import create_engine, text, inspect
 from sqlalchemy.orm import declarative_base
 from sqlalchemy import Column, Integer, String, Date, DateTime
 import os
 import datetime
- 
+import re  # For basic text extraction/cleaning
+
 db_url_raw = os.environ.get('DATABASE_URL')
 if db_url_raw is None:
     raise ValueError("DATABASE_URL environment variable is not set. Check Render dashboard or yaml configuration.")
@@ -32,40 +33,62 @@ def init_db(engine):
         Base.metadata.create_all(engine)
         print("Created opportunities table")
 
-class RfpSpider(scrapy.Spider):
-    name = 'rfp_spider'
-    start_urls = ['https://www.bcbid.gov.bc.ca', 'https://purchasing.alberta.ca/']  # Update with real URLs, e.g., https://www.bcbid.gov.bc.ca/ or https://www.albertapurchasingconnection.com/
+# Function to extract deadline from text (basic regex; improve as needed)
+def extract_deadline(text):
+    match = re.search(r'\b(\d{4}-\d{2}-\d{2})\b', text)  # YYYY-MM-DD pattern
+    return match.group(1) if match else ''
 
-    def parse(self, response):
-        # Custom parsing logic: Extract RFPs from the page (use CSS/XPath selectors based on site structure)
-        # Example placeholder - replace with actual selectors
-        for rfp in response.css('div.rfp-item'):
-            yield {
-                'company_name': rfp.css('.company::text').get(default='').strip(),
-                'province': rfp.css('.province::text').get(default='').strip(),
-                'sector': rfp.css('.sector::text').get(default='').strip(),
-                'domain': rfp.css('a::attr(href)').get(default='').strip(),
-                'deadline': rfp.css('.deadline::text').get(default='').strip(),  # Assume YYYY-MM-DD format
-                'budget': rfp.css('.budget::text').get(default='').strip()
-            }
+# Function to extract budget from text (e.g., $XXXk patterns)
+def extract_budget(text):
+    match = re.search(r'\$(\d+k?)', text)  # Simple $XXXk pattern
+    return match.group(0) if match else ''
 
-# Run spider and insert to DB (for GitHub Actions cron)
-if __name__ == '__main__':
-    init_db(engine)  # Create table if needed
-    with engine.connect() as conn:
-        conn.execute(text("TRUNCATE TABLE opportunities"))  # Clear old data for fresh scrape
-    process = scrapy.crawler.CrawlerProcess(settings={'ITEM_PIPELINES': {'__main__.DbPipeline': 1}})
-    process.crawl(RfpSpider)
-    process.start()
+# Main scraper logic using RSS feeds
+def scrape_feeds():
+    feeds = [
+        'https://www.bcbid.gov.bc.ca/rss',  # BC Bid RSS
+        'https://vendor.purchasingconnection.ca/rss',  # Alberta Purchasing Connection RSS
+        'https://www.canadabuys.gc.ca/rss'  # CanadaBuys (federal, filter for BC/AB)
+        # Add more feeds as discovered, e.g., MERX or other aggregators
+    ]
+    items = []
+    for url in feeds:
+        parsed = feedparser.parse(url)
+        province = 'BC' if 'bc' in url else 'AB' if 'alberta' in url else 'Federal'  # Adjust based on feed
+        for entry in parsed.entries:
+            # Filter for relevant keywords (risk, compliance, etc.)
+            if any(keyword in entry.title.lower() or keyword in entry.description.lower() for keyword in ['risk', 'compliance', 'audit', 'cybersecurity']):
+                item = {
+                    'company_name': entry.get('author', entry.get('title', '')).strip(),
+                    'province': province,
+                    'sector': entry.get('category', '').strip() or 'Unknown',  # Use category if available
+                    'domain': entry.link,
+                    'deadline': extract_deadline(entry.description or entry.title),
+                    'budget': extract_budget(entry.description or '')
+                }
+                items.append(item)
+    return items
 
+# Insert items to DB
 class DbPipeline:
     def __init__(self):
         self.engine = create_engine(DATABASE_URL)
 
-    def process_item(self, item, spider):
+    def process_item(self, item):
         with self.engine.connect() as conn:
             conn.execute(text("""
                 INSERT INTO opportunities (company_name, province, sector, domain, deadline, budget)
                 VALUES (:company_name, :province, :sector, :domain, :deadline::date, :budget)
             """), item)
-        return item
+
+# Run the scraper
+if __name__ == '__main__':
+    init_db(engine)  # Create table if needed
+    with engine.connect() as conn:
+        conn.execute(text("TRUNCATE TABLE opportunities"))  # Clear old data for fresh scrape
+    items = scrape_feeds()
+    pipeline = DbPipeline()
+    for item in items:
+        if item['deadline']:  # Skip if no deadline extracted
+            pipeline.process_item(item)
+    print(f"Inserted {len(items)} opportunities")
