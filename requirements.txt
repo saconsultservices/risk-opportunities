@@ -5,4 +5,8 @@ gunicorn==22.0.0
 sqlalchemy==2.0.45
 scrapy==2.11.1
 redis==5.0.1
-psycopg==3.3  # Replaces psycopg2-binary for Postgres driver
+psycopg==3.3
+beautifulsoup4==4.12.3  # For scraping
+lxml==5.3.0  # Parser for BS4
+requests==2.32.3  # For API calls
+feedparser==6.0.11  # Added for RSS
