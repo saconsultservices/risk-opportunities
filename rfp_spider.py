@@ -5,6 +5,7 @@ from sqlalchemy import Column, Integer, String, Date, DateTime
 import os
 import datetime
 import re  # For basic text extraction/cleaning
+import requests  # For API calls
 
 db_url_raw = os.environ.get('DATABASE_URL')
 if db_url_raw is None:
@@ -43,25 +44,128 @@ def extract_budget(text):
     match = re.search(r'\$(\d+k?)', text)  # Simple $XXXk pattern
     return match.group(0) if match else ''
 
-# Main scraper logic using RSS feeds
-def scrape_feeds():
-    feeds = [
-        'https://www.bcbid.gov.bc.ca/rss',  # BC Bid RSS
-        'https://vendor.purchasingconnection.ca/rss',  # Alberta Purchasing Connection RSS
-        'https://www.canadabuys.gc.ca/rss'  # CanadaBuys (federal, filter for BC/AB)
-        # Add more feeds as discovered, e.g., MERX or other aggregators
-    ]
+# Fetch from TendersOnTime API (placeholder - requires API key/subscription; update with your key)
+def fetch_tendersontime(api_key, date='today'):
+    url = f"https://www.tendersontime.com/tenders/api?date={date}"  # From API docs; adjust params
+    headers = {'Authorization': f'Bearer {api_key}'}  # Or as per docs
+    response = requests.get(url, headers=headers)
+    if response.status_code == 200:
+        data = response.json()
+        items = []
+        for tender in data.get('tenders', []):
+            item = {
+                'company_name': tender.get('authority', ''),
+                'province': tender.get('province', ''),  # Adjust based on API response
+                'sector': tender.get('sector', ''),
+                'domain': tender.get('link', ''),
+                'deadline': tender.get('deadline', ''),
+                'budget': tender.get('budget', '')
+            }
+            items.append(item)
+        return items
+    else:
+        print(f"TendersOnTime API error: {response.status_code}")
+        return []
+
+# Fetch from RFPMart RSS feed
+def fetch_rfpmart():
+    feed_url = 'http://feeds.feedburner.com/RFPMart'  # From results
+    parsed = feedparser.parse(feed_url)
     items = []
+    for entry in parsed.entries:
+        if any(keyword in entry.title.lower() or keyword in entry.description.lower() for keyword in ['risk', 'compliance', 'audit', 'cybersecurity']):
+            item = {
+                'company_name': entry.get('author', entry.get('title', '')).strip(),
+                'province': entry.get('province', ''),  # May need extraction from description
+                'sector': entry.get('category', '').strip() or 'Unknown',
+                'domain': entry.link,
+                'deadline': extract_deadline(entry.description or entry.title),
+                'budget': extract_budget(entry.description or '')
+            }
+            items.append(item)
+    return items
+
+# Fetch from RFPDB (no RSS/API; basic scrape placeholder - update selectors)
+def fetch_rfpdb():
+    url = 'https://www.rfpdb.com/view/all'  # Listings page; may require login
+    response = requests.get(url)
+    if response.status_code == 200:
+        # Use BeautifulSoup or lxml for parsing (add to requirements.txt: beautifulsoup4==4.12.3, lxml==5.3.0)
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(response.text, 'lxml')
+        items = []
+        for rfp in soup.select('div.rfp-item'):  # Adjust selector based on site inspection
+            item = {
+                'company_name': rfp.select_one('.organization').text.strip() if rfp.select_one('.organization') else '',
+                'province': 'Unknown',  # Extract from text if available
+                'sector': rfp.select_one('.category').text.strip() if rfp.select_one('.category') else '',
+                'domain': rfp.select_one('a').get('href', '') if rfp.select_one('a') else '',
+                'deadline': extract_deadline(rfp.text),
+                'budget': extract_budget(rfp.text)
+            }
+            items.append(item)
+        return items
+    else:
+        print(f"RFPDB fetch error: {response.status_code}")
+        return []
+
+# Fetch from FindRFP (no RSS/API; basic scrape placeholder - update selectors)
+def fetch_findrfp():
+    url = 'https://www.findrfp.com/service/search.aspx'  # Search page; may need params or login
+    response = requests.get(url, params={'keywords': 'risk consulting'})  # Add search params
+    if response.status_code == 200:
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(response.text, 'lxml')
+        items = []
+        for rfp in soup.select('div.rfp-listing'):  # Adjust selector
+            item = {
+                'company_name': rfp.select_one('.buyer-org').text.strip() if rfp.select_one('.buyer-org') else '',
+                'province': 'Unknown',  # Extract if available
+                'sector': rfp.select_one('.sector').text.strip() if rfp.select_one('.sector') else '',
+                'domain': rfp.select_one('a.details').get('href', '') if rfp.select_one('a.details') else '',
+                'deadline': extract_deadline(rfp.text),
+                'budget': extract_budget(rfp.text)
+            }
+            items.append(item)
+        return items
+    else:
+        print(f"FindRFP fetch error: {response.status_code}")
+        return []
+
+# Main scraper logic
+def scrape_all():
+    items = []
+    # TendersOnTime API (replace with your API key)
+    api_key = os.environ.get('TENDERSONTIME_API_KEY', '')  # Add as GitHub secret
+    if api_key:
+        items += fetch_tendersontime(api_key)
+    else:
+        print("TendersOnTime API key not set - skipping")
+
+    # RFPMart RSS
+    items += fetch_rfpmart()
+
+    # RFPDB scrape
+    items += fetch_rfpdb()
+
+    # FindRFP scrape
+    items += fetch_findrfp()
+
+    # Add previous feeds for completeness
+    feeds = [
+        'https://www.bcbid.gov.bc.ca/rss',
+        'https://vendor.purchasingconnection.ca/rss',
+        'https://www.canadabuys.gc.ca/rss'
+    ]
     for url in feeds:
         parsed = feedparser.parse(url)
-        province = 'BC' if 'bc' in url else 'AB' if 'alberta' in url else 'Federal'  # Adjust based on feed
+        province = 'BC' if 'bc' in url else 'AB' if 'alberta' in url else 'Federal'
         for entry in parsed.entries:
-            # Filter for relevant keywords (risk, compliance, etc.)
             if any(keyword in entry.title.lower() or keyword in entry.description.lower() for keyword in ['risk', 'compliance', 'audit', 'cybersecurity']):
                 item = {
                     'company_name': entry.get('author', entry.get('title', '')).strip(),
                     'province': province,
-                    'sector': entry.get('category', '').strip() or 'Unknown',  # Use category if available
+                    'sector': entry.get('category', '').strip() or 'Unknown',
                     'domain': entry.link,
                     'deadline': extract_deadline(entry.description or entry.title),
                     'budget': extract_budget(entry.description or '')
@@ -69,26 +173,16 @@ def scrape_feeds():
                 items.append(item)
     return items
 
-# Insert items to DB
-class DbPipeline:
-    def __init__(self):
-        self.engine = create_engine(DATABASE_URL)
-
-    def process_item(self, item):
-        with self.engine.connect() as conn:
-            conn.execute(text("""
-                INSERT INTO opportunities (company_name, province, sector, domain, deadline, budget)
-                VALUES (:company_name, :province, :sector, :domain, :deadline::date, :budget)
-            """), item)
-
 # Run the scraper
 if __name__ == '__main__':
     init_db(engine)  # Create table if needed
     with engine.connect() as conn:
         conn.execute(text("TRUNCATE TABLE opportunities"))  # Clear old data for fresh scrape
-    items = scrape_feeds()
+    items = scrape_all()
     pipeline = DbPipeline()
+    inserted_count = 0
     for item in items:
-        if item['deadline']:  # Skip if no deadline extracted
+        if item['deadline']:  # Skip if no deadline
             pipeline.process_item(item)
-    print(f"Inserted {len(items)} opportunities")
+            inserted_count += 1
+    print(f"Inserted {inserted_count} opportunities")
