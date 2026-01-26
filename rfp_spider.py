@@ -34,7 +34,7 @@ def init_db(engine):
 
 class RfpSpider(scrapy.Spider):
     name = 'rfp_spider'
-    start_urls = ['https://example-rfp-site.com/bc-procurement', 'https://example-rfp-site.com/ab-procurement']  # Update with real URLs, e.g., https://www.bcbid.gov.bc.ca/ or https://www.albertapurchasingconnection.com/
+    start_urls = ['https://www.bcbid.gov.bc.ca', 'https://purchasing.alberta.ca/']  # Update with real URLs, e.g., https://www.bcbid.gov.bc.ca/ or https://www.albertapurchasingconnection.com/
 
     def parse(self, response):
         # Custom parsing logic: Extract RFPs from the page (use CSS/XPath selectors based on site structure)
