@@ -94,11 +94,11 @@ def fetch_rfpmart():
 def fetch_rfpdb():
     try:
         url = 'https://www.rfpdb.com/view/all'
-        response = requests.get(url, headers=headers, verify=False, timeout=10)  # verify=False to bypass cert issue
+        response = requests.get(url, headers=headers, verify=False, timeout=10)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'lxml')
         items = []
-        for rfp in soup.select('div.rfp-item'):  # Adjust if needed after testing
+        for rfp in soup.select('div.rfp-item'):
             item = {
                 'company_name': rfp.select_one('div.organization').text.strip() if rfp.select_one('div.organization') else '',
                 'province': 'Unknown',
@@ -118,11 +118,11 @@ def fetch_rfpdb():
 def fetch_findrfp():
     try:
         url = 'https://www.findrfp.com/service/search.aspx?keywords=risk+consulting'
-        response = requests.get(url, headers=headers, verify=False, timeout=10)  # verify=False
+        response = requests.get(url, headers=headers, verify=False, timeout=10)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'lxml')
         items = []
-        for rfp in soup.select('div.rfp-listing'):  # Adjust if needed
+        for rfp in soup.select('div.rfp-listing'):
             item = {
                 'company_name': rfp.select_one('div.buyer-org').text.strip() if rfp.select_one('div.buyer-org') else '',
                 'province': 'Unknown',
@@ -138,6 +138,17 @@ def fetch_findrfp():
     except Exception as e:
         print(f"FindRFP error: {str(e)}")
         return []
+
+class DbPipeline:
+    def __init__(self):
+        self.engine = create_engine(DATABASE_URL)
+
+    def process_item(self, item):
+        with self.engine.connect() as conn:
+            conn.execute(text("""
+                INSERT INTO opportunities (company_name, province, sector, domain, deadline, budget)
+                VALUES (:company_name, :province, :sector, :domain, :deadline::date, :budget)
+            """), item)
 
 def scrape_all():
     items = []
