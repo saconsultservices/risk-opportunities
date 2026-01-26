@@ -4,7 +4,7 @@ from sqlalchemy.orm import declarative_base
 from sqlalchemy import Column, Integer, String, Date, DateTime
 import os
 import datetime
-
+ 
 db_url_raw = os.environ.get('DATABASE_URL')
 if db_url_raw is None:
     raise ValueError("DATABASE_URL environment variable is not set. Check Render dashboard or yaml configuration.")
