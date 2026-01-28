@@ -7,6 +7,7 @@ import datetime
 import re
 import requests
 from bs4 import BeautifulSoup
+from dateutil.parser import parse as date_parse  # Add to requirements.txt: python-dateutil==2.9.0
 
 db_url_raw = os.environ.get('DATABASE_URL')
 if db_url_raw is None:
@@ -34,8 +35,12 @@ def init_db(engine):
         print("Created opportunities table")
 
 def extract_deadline(text):
-    match = re.search(r'\b(\d{4}-\d{2}-\d{2})\b', text)
-    return match.group(1) if match else ''
+    # Improved: Use dateutil to parse natural language dates
+    try:
+        parsed_date = date_parse(text, fuzzy=True)
+        return parsed_date.strftime('%Y-%m-%d')
+    except:
+        return ''
 
 def extract_budget(text):
     match = re.search(r'\$(\d+k?)', text)
@@ -81,7 +86,7 @@ def fetch_rfpmart():
                     'province': 'Unknown',
                     'sector': entry.get('category', '').strip() or 'Unknown',
                     'domain': entry.link,
-                    'deadline': extract_deadline(entry.description or entry.title),
+                    'deadline': extract_deadline(entry.description or entry.title or entry.get('published', '')),
                     'budget': extract_budget(entry.description or '')
                 }
                 items.append(item)
@@ -98,14 +103,17 @@ def fetch_rfpdb():
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'lxml')
         items = []
-        for rfp in soup.select('div.rfp-item'):
+        for rfp in soup.select('ul.rfp-list > li'):  # Updated selector based on tool summary (numbered list items)
+            text = rfp.text.strip()
+            title = rfp.find('a').text.strip() if rfp.find('a') else ''
+            link = rfp.find('a').get('href', '') if rfp.find('a') else ''
             item = {
-                'company_name': rfp.select_one('div.organization').text.strip() if rfp.select_one('div.organization') else '',
+                'company_name': title.split(' - ')[0] if ' - ' in title else title,  # Extract from title
                 'province': 'Unknown',
-                'sector': rfp.select_one('div.category').text.strip() if rfp.select_one('div.category') else '',
-                'domain': rfp.select_one('a').get('href', '') if rfp.select_one('a') else '',
-                'deadline': extract_deadline(rfp.text),
-                'budget': extract_budget(rfp.text)
+                'sector': re.search(r'\*\*(\w+)\*\*', text).group(1) if re.search(r'\*\*(\w+)\*\*', text) else 'Unknown',  # From **Category**
+                'domain': link,
+                'deadline': extract_deadline(text),
+                'budget': extract_budget(text)
             }
             if item['domain']:
                 items.append(item)
@@ -115,29 +123,7 @@ def fetch_rfpdb():
         print(f"RFPDB error: {str(e)}")
         return []
 
-def fetch_findrfp():
-    try:
-        url = 'https://www.findrfp.com/service/search.aspx?keywords=risk+consulting'
-        response = requests.get(url, headers=headers, verify=False, timeout=10)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, 'lxml')
-        items = []
-        for rfp in soup.select('div.rfp-listing'):
-            item = {
-                'company_name': rfp.select_one('div.buyer-org').text.strip() if rfp.select_one('div.buyer-org') else '',
-                'province': 'Unknown',
-                'sector': rfp.select_one('div.sector').text.strip() if rfp.select_one('div.sector') else '',
-                'domain': rfp.select_one('a.details').get('href', '') if rfp.select_one('a.details') else '',
-                'deadline': extract_deadline(rfp.text),
-                'budget': extract_budget(rfp.text)
-            }
-            if item['domain']:
-                items.append(item)
-        print(f"Fetched {len(items)} from FindRFP")
-        return items
-    except Exception as e:
-        print(f"FindRFP error: {str(e)}")
-        return []
+# Removed fetch_findrfp() as tool shows no public listings without login
 
 class DbPipeline:
     def __init__(self):
@@ -155,9 +141,10 @@ def scrape_all():
     api_key = os.environ.get('TENDERSONTIME_API_KEY', '')
     if api_key:
         items += fetch_tendersontime(api_key)
+    else:
+        print("TendersOnTime API key not set - skipping; sign up at tendersontime.com for free key")
     items += fetch_rfpmart()
     items += fetch_rfpdb()
-    items += fetch_findrfp()
     return items
 
 if __name__ == '__main__':
